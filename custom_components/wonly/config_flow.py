@@ -8,7 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import callback
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
@@ -49,7 +49,7 @@ class WonlyConfigFlow(ConfigFlow, domain=DOMAIN):
             credential = user_input[CONF_CREDENTIAL]
             client_id = (user_input.get(CONF_CLIENT_ID) or DEFAULT_CLIENT_ID).strip()
 
-            session = async_create_clientsession(self.hass)
+            session = async_get_clientsession(self.hass)
             api = WonlyApi(session, client_id=client_id)
             try:
                 await api.async_login(identifier, credential)
@@ -67,8 +67,6 @@ class WonlyConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_CLIENT_ID: client_id,
                     },
                 )
-            finally:
-                await session.close()
 
         return self.async_show_form(
             step_id="user",

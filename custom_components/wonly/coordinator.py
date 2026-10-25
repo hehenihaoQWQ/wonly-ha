@@ -64,6 +64,13 @@ class WonlyCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                         continue
                     events = await self.api.async_get_events(did)
                     state_event = next((e for e in events if _is_state_event(e)), None)
+                    # 门锁用户列表只用来把开锁事件里的用户编号翻成别名，
+                    # 拉不到不影响门锁本身，失败就降级成空列表。
+                    try:
+                        users = await self.api.async_get_lock_users(did)
+                    except WonlyApiError as err:
+                        _LOGGER.warning("拉取门锁 %s 的用户列表失败: %s", did, err)
+                        users = []
                     locks[did] = {
                         "device": device,
                         "group": group,
@@ -71,7 +78,7 @@ class WonlyCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                         "state": state_event.get("name") if state_event else None,
                         "event": events[0] if events else None,
                         "state_event": state_event,
-                        "users": await self.api.async_get_lock_users(did),
+                        "users": users,
                     }
             self.locks = locks
             return locks

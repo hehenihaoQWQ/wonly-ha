@@ -55,6 +55,17 @@ class WonlyApi:
             headers.update(extra)
         return headers
 
+    @staticmethod
+    def _peer(resp: aiohttp.ClientResponse) -> tuple[str, str]:
+        """取对端 / 本地地址，出问题时定位用。"""
+        transport = resp.connection.transport if resp.connection else None
+        if transport is None:
+            return ("", "")
+        peer = transport.get_extra_info("peername") or ()
+        sock = transport.get_extra_info("sockname") or ()
+        fmt = lambda a: f"{a[0]}:{a[1]}" if len(a) >= 2 else str(a)  # noqa: E731
+        return (fmt(peer), fmt(sock))
+
     async def _request(
         self,
         method: str,
@@ -89,6 +100,36 @@ class WonlyApi:
                         or data.get("error_description")
                         or data.get("message_id")
                         or text[:200]
+                    )
+                    peer, local = self._peer(resp)
+                    _LOGGER.error(
+                        "王力接口 %s %s 失败: %s %s | 对端=%s 本地=%s | 协议=%s | 头=%s | 体=%s",
+                        method,
+                        path,
+                        resp.status,
+                        resp.reason,
+                        peer,
+                        local,
+                        resp.version,
+                        {
+                            k: v
+                            for k, v in resp.headers.items()
+                            if k.lower()
+                            in (
+                                "server",
+                                "via",
+                                "content-type",
+                                "x-cache",
+                                "x-request-id",
+                                "x-served-by",
+                                "retry-after",
+                                "x-ratelimit-limit",
+                                "x-ratelimit-remaining",
+                                "alibaba-request-id",
+                                "eagleeye-traceid",
+                            )
+                        },
+                        text[:300],
                     )
                     raise WonlyApiError(f"{method} {path} -> {resp.status}: {message}")
                 return data

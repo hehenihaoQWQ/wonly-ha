@@ -8,12 +8,10 @@ from __future__ import annotations
 import asyncio
 import logging
 
-import aiohttp
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import WonlyApi, WonlyApiError
 from .const import (
@@ -34,7 +32,8 @@ RECONNECT_MAX_DELAY = 60
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """配置一个王力账号。"""
-    session = async_create_clientsession(hass, timeout=aiohttp.ClientTimeout(total=30))
+    # 用 HA 共享的 aiohttp session，不要自己 close（HA 会在停机时统一收）
+    session = async_get_clientsession(hass)
     api = WonlyApi(
         session,
         client_id=entry.data.get(CONF_CLIENT_ID) or DEFAULT_CLIENT_ID,
@@ -45,14 +44,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_config_entry_first_refresh()
     except Exception as err:  # noqa: BLE001 - 交由 HA 稍后重试
         _LOGGER.error("王力门锁初始化失败: %s", err)
-        await session.close()
         raise ConfigEntryNotReady(f"王力门锁初始化失败: {err}") from err
 
     hass.data.setdefault(DOMAIN_DATA, {})
     hass.data[DOMAIN_DATA][entry.entry_id] = {
         "api": api,
         "coordinator": coordinator,
-        "session": session,
         "connection": None,
     }
 
@@ -79,7 +76,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         connection = data.get("connection")
         if connection is not None:
             await connection.async_close()
-        await data["session"].close()
     if not hass.data.get(DOMAIN_DATA):
         hass.data.pop(DOMAIN_DATA, None)
     return unload_ok
