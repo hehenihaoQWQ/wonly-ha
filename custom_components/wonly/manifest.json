@@ -2,13 +2,13 @@
   "domain": "wonly",
   "name": "王力智能门锁",
   "codeowners": [
-    "@XG520"
+    "@hehenihaoQWQ"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/XG520/wonly-ha",
+  "documentation": "https://github.com/hehenihaoQWQ/wonly-ha",
   "integration_type": "hub",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/XG520/wonly-ha/issues",
+  "issue_tracker": "https://github.com/hehenihaoQWQ/wonly-ha/issues",
   "requirements": [],
   "version": "1.0.0"
 }
