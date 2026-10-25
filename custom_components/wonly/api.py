@@ -41,30 +41,53 @@ class WonlyApi:
         self._token: str | None = None
         self._uid: str | None = None
         self._expires_at: float = 0.0
+        self._logged_conn = False
 
     # ---------- 内部 ----------
-    def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-Kiwik-Client-Id": self._client_id,
-        }
-        if self._token:
+    def _headers(
+        self,
+        extra: dict[str, str] | None = None,
+        *,
+        auth: bool = False,
+        bearer: bool = False,
+    ) -> dict[str, str]:
+        """请求头。
+
+        业务查询只把 access_token 放在 URL 上（和王力 App、社区版 kiwiot_ws 一致）；
+        只有登录 / 换开锁凭证这类需要 client id 的请求才加额外的头。
+        """
+        headers: dict[str, str] = {}
+        if auth:
+            headers["X-Kiwik-Client-Id"] = self._client_id
+        if bearer and self._token:
             headers["Authorization"] = f"Bearer {self._token}"
         if extra:
             headers.update(extra)
         return headers
 
+    def _redacted_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
+        """请求头（token 打码），排查问题时用。"""
+        result = dict(headers or {})
+        if "Authorization" in result:
+            result["Authorization"] = "Bearer ***"
+        return result
+
     @staticmethod
-    def _peer(resp: aiohttp.ClientResponse) -> tuple[str, str]:
-        """取对端 / 本地地址，出问题时定位用。"""
-        transport = resp.connection.transport if resp.connection else None
+    def _peer(resp: aiohttp.ClientResponse) -> str:
+        """取对端 / 本地地址 / TLS 信息，出问题时定位用。"""
+        connection = resp.connection
+        transport = connection.transport if connection else None
         if transport is None:
-            return ("", "")
+            return "连接信息不可用"
         peer = transport.get_extra_info("peername") or ()
         sock = transport.get_extra_info("sockname") or ()
         fmt = lambda a: f"{a[0]}:{a[1]}" if len(a) >= 2 else str(a)  # noqa: E731
-        return (fmt(peer), fmt(sock))
+        ssl_obj = transport.get_extra_info("ssl_object")
+        tls = ""
+        if ssl_obj is not None:
+            cipher = ssl_obj.cipher()
+            tls = f"{ssl_obj.version()}/{cipher[0] if cipher else '?'}"
+        return f"对端={fmt(peer)} 本地={fmt(sock)} TLS={tls or '无'}"
 
     async def _request(
         self,
@@ -72,22 +95,26 @@ class WonlyApi:
         path: str,
         body: Any = None,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         timeout: int = 20,
     ) -> Any:
         url = f"{self._base_url}{path}"
         query = dict(params or {})
         if self._token:
             query.setdefault("access_token", self._token)
+        request_headers = headers if headers is not None else self._headers()
 
         try:
             async with self._session.request(
                 method,
                 url,
-                headers=self._headers(),
+                headers=request_headers,
                 json=body,
                 params=query,
                 timeout=aiohttp.ClientTimeout(total=timeout),
             ) as resp:
+                # 连接信息要在读 body 之前取，读完连接可能已经还回连接池
+                peer = self._peer(resp)
                 text = await resp.text()
                 try:
                     data = json.loads(text) if text else {}
@@ -101,16 +128,15 @@ class WonlyApi:
                         or data.get("message_id")
                         or text[:200]
                     )
-                    peer, local = self._peer(resp)
                     _LOGGER.error(
-                        "王力接口 %s %s 失败: %s %s | 对端=%s 本地=%s | 协议=%s | 头=%s | 体=%s",
+                        "王力接口 %s %s 失败: %s %s | %s | 协议=%s | 请求头=%s | 响应头=%s | 响应体=%s",
                         method,
                         path,
                         resp.status,
                         resp.reason,
                         peer,
-                        local,
                         resp.version,
+                        self._redacted_headers(request_headers),
                         {
                             k: v
                             for k, v in resp.headers.items()
@@ -132,30 +158,122 @@ class WonlyApi:
                         text[:300],
                     )
                     raise WonlyApiError(f"{method} {path} -> {resp.status}: {message}")
+                if not self._logged_conn:
+                    self._logged_conn = True
+                    _LOGGER.info(
+                        "王力接口连接: %s | 协议=%s | 请求头=%s",
+                        peer,
+                        resp.version,
+                        self._redacted_headers(request_headers),
+                    )
+                    await self._async_log_egress_ip()
                 return data
         except aiohttp.ClientError as err:
             raise WonlyApiError(f"{method} {path} 网络错误: {err}") from err
+
+    async def _async_log_egress_ip(self) -> None:
+        """记录出口 IP：服务端如果按来源 IP 拒绝，日志里能看出来。"""
+        for url in ("https://api.ipify.org", "http://www.taobao.com/help/getip.php"):
+            try:
+                async with self._session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=5)
+                ) as resp:
+                    text = (await resp.text()).strip()
+                if text:
+                    _LOGGER.info("王力接口出口 IP(%s): %s", url, text[:60])
+                    return
+            except Exception as err:  # noqa: BLE001 - 诊断用途，失败就算了
+                _LOGGER.debug("获取出口 IP 失败(%s): %s", url, err)
+
+    # ---------- 诊断 ----------
+    async def async_diagnose_users(self, did: str) -> None:
+        """临时诊断：同一个接口用几种不同的请求方式各试一次，看哪种能通。
+
+        现象：Mac / tank 上同一个 URL 同一个 token 都是 200，HA 里却是 403。
+        这里把 session、User-Agent、URL 拼法分别换一遍，一次性定位差异。
+        """
+        path = f"/api/locks/{did}/users"
+        url_q = f"{self._base_url}{path}?access_token={self._token}"
+        url = f"{self._base_url}{path}"
+        query = {"access_token": self._token} if self._token else {}
+        ua = "Python/3.12 aiohttp/3.12 Python/3.12"
+
+        async def probe(label: str, session, headers: dict[str, str], params) -> None:
+            try:
+                async with session.request(
+                    "GET",
+                    url_q if params is None else url,
+                    headers=headers,
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    peer = self._peer(resp)
+                    text = await resp.text()
+                    _LOGGER.warning(
+                        "诊断[%s]: %s | %s | 响应头=%s | 体=%s",
+                        label,
+                        resp.status,
+                        peer,
+                        {
+                            k: v
+                            for k, v in resp.headers.items()
+                            if k.lower()
+                            in ("server", "via", "x-request-id", "content-type", "x-cache")
+                        },
+                        text[:120],
+                    )
+            except Exception as err:  # noqa: BLE001 - 诊断用途
+                _LOGGER.warning("诊断[%s]: 异常 %s", label, err)
+
+        await probe("A 共享session/params", self._session, {}, query)
+        await probe("B 共享session/原样URL", self._session, {}, None)
+        await probe("C 共享session/kiwiot UA", self._session, {"User-Agent": ua}, None)
+        connector = aiohttp.TCPConnector(ssl=True, enable_cleanup_closed=True)
+        own = aiohttp.ClientSession(
+            connector=connector, timeout=aiohttp.ClientTimeout(total=15, connect=10)
+        )
+        try:
+            await probe("D 独立session", own, {}, None)
+            await probe("E 独立session/kiwiot UA", own, {"User-Agent": ua}, None)
+        finally:
+            await own.close()
+        await self._async_log_egress_ip()
 
     # ---------- 登录 ----------
     async def async_login(self, identifier: str, credential: str) -> str:
         """用账号密码换 access_token，成功返回 token。"""
         body = {"auth_type": "password", "identifier": identifier, "credential": credential}
         last: Exception | None = None
-        for path in ("/restapi/session/token", "/restapi/auth/tokens"):
-            try:
-                data = await self._request("POST", path, body)
-            except WonlyApiError as err:
-                last = err
-                continue
-            payload = data.get("data") if isinstance(data.get("data"), dict) else data
-            token = payload.get("access_token")
-            if token:
-                self._token = token
-                expires_in = payload.get("expires_in") or 0
-                self._expires_at = time.time() + float(expires_in) - 300
-                _LOGGER.info("王力登录成功，token 有效期 %s 秒", expires_in)
-                return token
-            last = WonlyApiError(f"{path} 响应中没有 access_token")
+        # 重新登录时不要把失效的旧 token 带到 URL 上
+        old_token = self._token
+        self._token = None
+        try:
+            for path in ("/restapi/auth/tokens", "/restapi/session/token"):
+                try:
+                    data = await self._request(
+                        "POST",
+                        path,
+                        body,
+                        headers=self._headers(
+                            {"Content-Type": "application/json"}, auth=True
+                        ),
+                    )
+                except WonlyApiError as err:
+                    last = err
+                    continue
+                payload = data.get("data") if isinstance(data.get("data"), dict) else data
+                token = payload.get("access_token")
+                if token:
+                    self._token = token
+                    expires_in = payload.get("expires_in") or 0
+                    self._expires_at = time.time() + float(expires_in) - 300
+                    _LOGGER.info("王力登录成功，token 有效期 %s 秒", expires_in)
+                    return token
+                last = WonlyApiError(f"{path} 响应中没有 access_token")
+        except Exception:
+            self._token = old_token
+            raise
+        self._token = old_token
         raise WonlyApiError(f"登录失败: {last}")
 
     async def async_ensure_token(self, identifier: str, credential: str) -> str:
@@ -205,6 +323,9 @@ class WonlyApi:
             "POST",
             f"/restapi/users/{uid}/mfa/tokens",
             body={"auth_type": "password", "credential": credential},
+            headers=self._headers(
+                {"Content-Type": "application/json"}, auth=True, bearer=True
+            ),
         )
         token = data.get("access_token")
         if not token:

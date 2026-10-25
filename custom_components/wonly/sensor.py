@@ -27,7 +27,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class _WonlySensorBase(CoordinatorEntity[WonlyCoordinator]):
+class _WonlySensorBase(CoordinatorEntity[WonlyCoordinator], SensorEntity):
     """门锁传感器基类。"""
 
     _attr_has_entity_name = True

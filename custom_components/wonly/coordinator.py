@@ -45,6 +45,7 @@ class WonlyCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
         self.credential: str = entry.data[CONF_CREDENTIAL]
         self.uid: str | None = None
         self.locks: dict[str, dict[str, Any]] = {}
+        self._diagnosed = False
 
     async def _async_update_data(self) -> dict[str, dict[str, Any]]:
         try:
@@ -81,6 +82,12 @@ class WonlyCoordinator(DataUpdateCoordinator[dict[str, dict[str, Any]]]):
                         "users": users,
                     }
             self.locks = locks
+            if not self._diagnosed and locks:
+                self._diagnosed = True
+                try:
+                    await self.api.async_diagnose_users(next(iter(locks)))
+                except Exception as err:  # noqa: BLE001 - 诊断用途
+                    _LOGGER.warning("诊断失败: %s", err)
             return locks
         except WonlyApiError as err:
             raise UpdateFailed(f"拉取王力门锁数据失败: {err}") from err
