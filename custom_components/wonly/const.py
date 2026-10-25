@@ -23,6 +23,9 @@ DEFAULT_CLIENT_ID: Final = "980tSgPSaW8WQ3HDKdyiyJKQymGqxMzl"
 BASE_URL: Final = "https://go.kiwik.cn"
 WS_URL: Final = "wss://wsapi.kiwiot.com/"
 
+# WebSocket 心跳间隔（秒）
+WS_HEARTBEAT_SECONDS: Final = 30
+
 PLATFORMS: Final = [Platform.LOCK, Platform.SENSOR, Platform.EVENT]
 
 # 设备指令码（与王力 App 内嵌的 KiwiOT 协议一致）

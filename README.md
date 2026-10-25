@@ -18,7 +18,7 @@
 
 HACS → 左侧菜单「自定义仓库」→ 添加：
 
-- 仓库地址：`https://github.com/drenal/wonly-ha`
+- 仓库地址：`https://github.com/XG520/wonly-ha`
 - 分类：`集成`
 
 ### 2. 安装

@@ -12,7 +12,7 @@ import aiohttp
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import WonlyApi, WonlyApiError
@@ -43,10 +43,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await coordinator.async_config_entry_first_refresh()
-    except Exception as err:  # noqa: BLE001 - 配置流会展示错误
+    except Exception as err:  # noqa: BLE001 - 交由 HA 稍后重试
         _LOGGER.error("王力门锁初始化失败: %s", err)
         await session.close()
-        raise
+        raise ConfigEntryNotReady(f"王力门锁初始化失败: {err}") from err
 
     hass.data.setdefault(DOMAIN_DATA, {})
     hass.data[DOMAIN_DATA][entry.entry_id] = {
@@ -59,10 +59,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-    entry.async_on_unload(
-        hass.async_create_background_task(
-            _async_ws_loop(hass, entry, api, coordinator), "wonly_ws"
-        )
+    # 任务绑定在配置项上，卸载配置时自动取消
+    entry.async_create_background_task(
+        hass, _async_ws_loop(hass, entry, api, coordinator), "wonly_ws"
     )
     return True
 
@@ -90,9 +89,7 @@ async def async_remote_unlock(
     hass: HomeAssistant, coordinator: WonlyCoordinator, did: str
 ) -> None:
     """远程开锁：换 secureToken -> 下发 Ctrl -> 等应答。"""
-    entry = hass.config_entries.async_get_entry(coordinator.entry.entry_id)
-    if entry is None:
-        raise HomeAssistantError("王力门锁配置项不存在")
+    entry = coordinator.entry
 
     data = hass.data.get(DOMAIN_DATA, {}).get(entry.entry_id)
     if not data:
@@ -128,7 +125,7 @@ async def async_remote_unlock(
         message = (
             payload.get("message")
             or payload.get("error_description")
-            or payload.get("code")
+            or payload.get("errorCode")
             or "服务端返回错误"
         )
         raise HomeAssistantError(f"远程开锁失败: {message}")

@@ -1,12 +1,14 @@
 {
   "domain": "wonly",
   "name": "王力智能门锁",
-  "codeowners": ["@drenal"],
+  "codeowners": [
+    "@XG520"
+  ],
   "config_flow": true,
-  "documentation": "https://github.com/drenal/wonly-ha",
+  "documentation": "https://github.com/XG520/wonly-ha",
   "integration_type": "hub",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/drenal/wonly-ha/issues",
+  "issue_tracker": "https://github.com/XG520/wonly-ha/issues",
   "requirements": [],
   "version": "1.0.0"
 }
