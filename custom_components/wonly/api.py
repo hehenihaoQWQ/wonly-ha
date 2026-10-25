@@ -17,7 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 # 王力/KiwiOT 的网关会按 User-Agent 拦截请求：
 # 带 "Home Assistant/..." 的请求在 /api/locks/{did}/users 上直接返回 403 Forbidden，
 # 换成别的 UA 就正常。所以这里固定一个自己的 UA。
-USER_AGENT = "KiwiOT-Wonly/1.0.2"
+USER_AGENT = "KiwiOT-Wonly"
 
 # 远端开锁指令：门密码开锁(DOORPW=2063) + 标志位 1
 # 王力 App 的打包方式是 XD(cmd, data) = base64(小端 cmd 两字节 ++ data)，
@@ -171,54 +171,9 @@ class WonlyApi:
                         resp.version,
                         self._redacted_headers(request_headers),
                     )
-                    await self._async_log_egress_ip()
                 return data
         except aiohttp.ClientError as err:
             raise WonlyApiError(f"{method} {path} 网络错误: {err}") from err
-
-    async def _async_log_egress_ip(self) -> None:
-        """记录出口 IP：服务端如果按来源 IP 拒绝，日志里能看出来。"""
-        for url in ("https://api.ipify.org", "http://www.taobao.com/help/getip.php"):
-            try:
-                async with self._session.get(
-                    url, timeout=aiohttp.ClientTimeout(total=5)
-                ) as resp:
-                    text = (await resp.text()).strip()
-                if text:
-                    _LOGGER.info("王力接口出口 IP(%s): %s", url, text[:60])
-                    return
-            except Exception as err:  # noqa: BLE001 - 诊断用途，失败就算了
-                _LOGGER.debug("获取出口 IP 失败(%s): %s", url, err)
-
-    # ---------- 诊断 ----------
-    async def async_diagnose_users(self, did: str) -> None:
-        """临时诊断：同一个接口换几种 User-Agent 各试一次，看哪种能通。
-
-        已确认王力网关会拦 "Home Assistant/..." 这种 UA，
-        这里再确认线上实际使用的 UA 在 HA 这边也能通过。
-        """
-        path = f"/api/locks/{did}/users"
-        url_q = f"{self._base_url}{path}?access_token={self._token}"
-
-        async def probe(label: str, headers: dict[str, str]) -> None:
-            try:
-                async with self._session.get(
-                    url_q, headers=headers, timeout=aiohttp.ClientTimeout(total=15)
-                ) as resp:
-                    text = await resp.text()
-                    _LOGGER.warning(
-                        "诊断[%s] UA=%s: %s | 体=%s",
-                        label,
-                        headers.get("User-Agent", "(默认)"),
-                        resp.status,
-                        text[:120],
-                    )
-            except Exception as err:  # noqa: BLE001 - 诊断用途
-                _LOGGER.warning("诊断[%s]: 异常 %s", label, err)
-
-        await probe("F 线上UA", {"User-Agent": USER_AGENT})
-        await probe("G aiohttp默认UA", {"User-Agent": "Python/3.12 aiohttp/3.12 Python/3.12"})
-        await probe("H 不覆盖UA", {})
 
     # ---------- 登录 ----------
     async def async_login(self, identifier: str, credential: str) -> str:

@@ -129,11 +129,21 @@ mode: single
 
 王力 H5 是 KiwiOT（优智云家）的白标，后端与 `h5.kiwik.cn` 一致，只有前端、realm 和 clientId 不同。
 
-- 登录：`POST /restapi/session/token`，body `{auth_type:"password", identifier, credential}`，header `X-Kiwik-Client-Id`
+- 登录：`POST /restapi/auth/tokens`，body `{auth_type:"password", identifier, credential}`，header `X-Kiwik-Client-Id`，返回 `access_token`（有效期 24 小时）
+  - 注意：`POST /restapi/session/token` 只返回 `session_token`（JWT），不能当 access_token 用
 - 业务接口带 `?access_token=`：`/restapi/user`、`/restapi/groups`、`/restapi/groups/{gid}/devices`、`/api/devices/{did}/events`、`/api/locks/{did}/users`
 - 远程开锁：先 `POST /restapi/users/{uid}/mfa/tokens`（`auth_type:"password"`）换 secureToken，再通过 WebSocket 下发 `Iot.Device/Ctrl`
 - 指令打包（与王力 App 一致）：`base64(小端 cmd 两字节 ++ data)`，开锁是 `DOORPW(2063) + [1]`
 - 事件：WebSocket `Iot.Device/EventNotify`，心跳 `Iot.Application/Ping`
+
+### 必须自带 User-Agent
+
+王力网关会按 `User-Agent` 拦请求：带 `Home Assistant/...` 的请求在 `/api/locks/{did}/users`
+上直接返回 `403 {"message":"Forbidden"}`（同样的 URL 换个 UA 就是 200）。
+所以所有请求都显式带上 `User-Agent: KiwiOT-Wonly`，别改回 HA 默认 UA。
+
+另外：只有 `/restapi/auth/tokens` 返回的 `access_token` 能过业务接口，
+`/restapi/session/token` 的 `session_token` 会报 `401 The access token is missing`。
 
 ## 许可证
 
