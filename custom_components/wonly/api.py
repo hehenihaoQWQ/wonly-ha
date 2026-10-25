@@ -14,6 +14,11 @@ from .const import BASE_URL, CMD_DOORPW, DEFAULT_CLIENT_ID, WS_URL
 
 _LOGGER = logging.getLogger(__name__)
 
+# 王力/KiwiOT 的网关会按 User-Agent 拦截请求：
+# 带 "Home Assistant/..." 的请求在 /api/locks/{did}/users 上直接返回 403 Forbidden，
+# 换成别的 UA 就正常。所以这里固定一个自己的 UA。
+USER_AGENT = "KiwiOT-Wonly/1.0.2"
+
 # 远端开锁指令：门密码开锁(DOORPW=2063) + 标志位 1
 # 王力 App 的打包方式是 XD(cmd, data) = base64(小端 cmd 两字节 ++ data)，
 # 这里保持完全一致（标准 base64、保留补位符）。
@@ -56,7 +61,7 @@ class WonlyApi:
         业务查询只把 access_token 放在 URL 上（和王力 App、社区版 kiwiot_ws 一致）；
         只有登录 / 换开锁凭证这类需要 client id 的请求才加额外的头。
         """
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = {"User-Agent": USER_AGENT}
         if auth:
             headers["X-Kiwik-Client-Id"] = self._client_id
         if bearer and self._token:
@@ -187,57 +192,33 @@ class WonlyApi:
 
     # ---------- 诊断 ----------
     async def async_diagnose_users(self, did: str) -> None:
-        """临时诊断：同一个接口用几种不同的请求方式各试一次，看哪种能通。
+        """临时诊断：同一个接口换几种 User-Agent 各试一次，看哪种能通。
 
-        现象：Mac / tank 上同一个 URL 同一个 token 都是 200，HA 里却是 403。
-        这里把 session、User-Agent、URL 拼法分别换一遍，一次性定位差异。
+        已确认王力网关会拦 "Home Assistant/..." 这种 UA，
+        这里再确认线上实际使用的 UA 在 HA 这边也能通过。
         """
         path = f"/api/locks/{did}/users"
         url_q = f"{self._base_url}{path}?access_token={self._token}"
-        url = f"{self._base_url}{path}"
-        query = {"access_token": self._token} if self._token else {}
-        ua = "Python/3.12 aiohttp/3.12 Python/3.12"
 
-        async def probe(label: str, session, headers: dict[str, str], params) -> None:
+        async def probe(label: str, headers: dict[str, str]) -> None:
             try:
-                async with session.request(
-                    "GET",
-                    url_q if params is None else url,
-                    headers=headers,
-                    params=params,
-                    timeout=aiohttp.ClientTimeout(total=15),
+                async with self._session.get(
+                    url_q, headers=headers, timeout=aiohttp.ClientTimeout(total=15)
                 ) as resp:
-                    peer = self._peer(resp)
                     text = await resp.text()
                     _LOGGER.warning(
-                        "诊断[%s]: %s | %s | 响应头=%s | 体=%s",
+                        "诊断[%s] UA=%s: %s | 体=%s",
                         label,
+                        headers.get("User-Agent", "(默认)"),
                         resp.status,
-                        peer,
-                        {
-                            k: v
-                            for k, v in resp.headers.items()
-                            if k.lower()
-                            in ("server", "via", "x-request-id", "content-type", "x-cache")
-                        },
                         text[:120],
                     )
             except Exception as err:  # noqa: BLE001 - 诊断用途
                 _LOGGER.warning("诊断[%s]: 异常 %s", label, err)
 
-        await probe("A 共享session/params", self._session, {}, query)
-        await probe("B 共享session/原样URL", self._session, {}, None)
-        await probe("C 共享session/kiwiot UA", self._session, {"User-Agent": ua}, None)
-        connector = aiohttp.TCPConnector(ssl=True, enable_cleanup_closed=True)
-        own = aiohttp.ClientSession(
-            connector=connector, timeout=aiohttp.ClientTimeout(total=15, connect=10)
-        )
-        try:
-            await probe("D 独立session", own, {}, None)
-            await probe("E 独立session/kiwiot UA", own, {"User-Agent": ua}, None)
-        finally:
-            await own.close()
-        await self._async_log_egress_ip()
+        await probe("F 线上UA", {"User-Agent": USER_AGENT})
+        await probe("G aiohttp默认UA", {"User-Agent": "Python/3.12 aiohttp/3.12 Python/3.12"})
+        await probe("H 不覆盖UA", {})
 
     # ---------- 登录 ----------
     async def async_login(self, identifier: str, credential: str) -> str:
