@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# 本地开发工具，不进仓库
+kiwiot/
+bin/
