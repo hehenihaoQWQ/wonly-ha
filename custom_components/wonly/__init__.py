@@ -12,6 +12,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import WonlyApi, WonlyApiError
@@ -21,6 +22,7 @@ from .const import (
     CONF_IDENTIFIER,
     CONF_SECURE_PASSWORD,
     DEFAULT_CLIENT_ID,
+    DOMAIN,
     DOMAIN_DATA,
     PLATFORMS,
 )
@@ -57,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_cleanup_legacy_lock_entity(hass, coordinator)
 
     # 不注册 update listener：配置项变更后的重载由配置流自己安排
     # （async_update_reload_and_abort）。两处都做的话，HA 2026.12 起
@@ -66,6 +69,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, _async_ws_loop(hass, entry, api, coordinator), "wonly_ws"
     )
     return True
+
+
+def _async_cleanup_legacy_lock_entity(
+    hass: HomeAssistant, coordinator: WonlyCoordinator
+) -> None:
+    """删掉旧版本（1.0.13 及以前）留下的 lock 实体。
+
+    那一版把门锁做成 lock 实体，前端会渲染成一个可开可关的开关，
+    而这一系列门锁根本没有远程上锁。现在改成 button 开门，
+    旧记录要清掉，否则页面上会留一个点不动的灰色开关。
+    """
+    registry = er.async_get(hass)
+    for did in coordinator.locks:
+        entity_id = registry.async_get_entity_id("lock", DOMAIN, f"{DOMAIN}_{did}")
+        if entity_id:
+            _LOGGER.info("清理旧版门锁实体: %s", entity_id)
+            registry.async_remove(entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
