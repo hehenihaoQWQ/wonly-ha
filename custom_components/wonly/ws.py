@@ -65,9 +65,13 @@ class WonlyConnection:
         self._ws = None
 
     async def async_ctrl(
-        self, did: str, secure_token: str, data: str, timeout: float = 15
+        self,
+        did: str,
+        data: str,
+        secure_token: str | None = None,
+        timeout: float = 15,
     ) -> dict[str, Any]:
-        """下发开锁指令并等待服务端应答。"""
+        """下发一条设备指令并等待应答。"""
         if not self.connected:
             raise WonlyApiError("王力门锁 WebSocket 未连接，无法下发指令")
 
@@ -76,7 +80,7 @@ class WonlyConnection:
         self._pending[message_id] = future
         try:
             await self._api.async_send_ctrl(
-                self._ws, did, secure_token, data, message_id
+                self._ws, did, data, secure_token, message_id
             )
             try:
                 return await asyncio.wait_for(future, timeout)
@@ -84,6 +88,28 @@ class WonlyConnection:
                 raise WonlyApiError("等待王力门锁应答超时") from None
         finally:
             self._pending.pop(message_id, None)
+
+    async def async_wake(
+        self, did: str, payload: str, timeout: float = 8
+    ) -> bool:
+        """发一条唤醒指令，等设备回应。
+
+        门锁睡着的时候，服务端发过去的开锁指令只是被缓存起来，设备没醒就过期了，
+        服务端照样回「已接收」但门锁没反应。先用「拍照监控」把设备叫醒，
+        收到它的回包才说明设备真的在线。
+        """
+        if not self.connected:
+            return False
+        try:
+            response = await self.async_ctrl(did, payload, None, timeout)
+        except WonlyApiError as err:
+            _LOGGER.info("唤醒门锁 %s 没有回应: %s", did, err)
+            return False
+        header = response.get("header") or {}
+        if header.get("name") == "ErrorResponse":
+            _LOGGER.info("唤醒门锁 %s 被服务端拒绝: %s", did, response.get("payload"))
+            return False
+        return True
 
     # ---------- 内部 ----------
     async def _read_loop(self) -> None:

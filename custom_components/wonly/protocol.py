@@ -26,6 +26,7 @@ import base64
 CMD_DOORPW = 2063  # 门密码开锁
 CMD_RMUNLK = 5132  # 远程开锁
 CMD_CMDCACHE = 5638  # 缓存命令（给 1002 协议的门锁用）
+CMD_SELFVIEW = 5134  # 拍照监控（也是最可靠的唤醒方式）
 
 # 远程开锁指令在服务端缓存的有效期（秒）。
 # 王力 App 远程开锁用 60 秒（pk 为 100000001601 的老协议用 10 秒）。
@@ -52,6 +53,22 @@ def _be32(value: int) -> bytes:
 def pack_cmd(cmd: int, data: bytes) -> str:
     """XD(cmd, data)：base64(大端 cmd 两字节 ++ data)。"""
     return base64.b64encode(_be16(cmd) + data).decode()
+
+
+def build_wake_payload(uid: str) -> str:
+    """拼唤醒门锁的指令（拍照监控）。
+
+    **开锁前必须先把门锁叫醒**：门锁睡着时，服务端只是把开锁指令缓存起来
+    （CmdCache 有效期 60 秒），设备没醒过来指令就过期了——服务端照样回
+    「已接收」，但门锁那边根本没收到，表现就是「点了开锁门没反应」。
+
+    「拍照监控」是王力 App 自己用的探活/唤醒指令：设备会真的回一包
+    （应答里带账号 uid），回包到了就说明设备已经在线，开锁指令随后就能送到。
+    副作用是门锁会拍一张照，事件流里会多一条 ACTIVE_MONITOR。
+    """
+    uid_bytes = uid.encode()
+    size = len(uid_bytes)
+    return pack_cmd(CMD_SELFVIEW, bytes([size + 2, 1, size]) + uid_bytes)
 
 
 def build_unlock_payload(uid: str, pk: str = "", seconds: int = UNLOCK_TTL_SECONDS) -> str:

@@ -285,27 +285,31 @@ class WonlyApi:
         self,
         ws: aiohttp.ClientWebSocketResponse,
         did: str,
-        secure_token: str,
         data: str,
+        secure_token: str | None = None,
         message_id: str | None = None,
     ) -> str:
-        """下发开锁指令，返回 messageId 便于对响应。"""
+        """下发一条设备指令，返回 messageId 便于对响应。
+
+        ``secure_token`` 只有开锁类指令需要；唤醒探活这种指令不带凭证也能发。
+        """
         message_id = message_id or await self.async_message_id()
+        header: dict[str, Any] = {
+            "namespace": "Iot.Device",
+            "name": "Ctrl",
+            "messageId": message_id,
+            "payloadVersion": 1,
+        }
+        if secure_token:
+            header["secureToken"] = secure_token
         await ws.send_json(
             {
-                "header": {
-                    "namespace": "Iot.Device",
-                    "name": "Ctrl",
-                    "messageId": message_id,
-                    "payloadVersion": 1,
-                    "secureToken": secure_token,
-                },
+                "header": header,
                 # channel 是王力 App 在「实时画面」里开锁时带的字段（门锁只有 0 号通道），
                 # 服务端按它把指令路由到具体通道，缺了可能只回「已接收」而不下发。
                 "payload": {"did": did, "verify": True, "channel": 0, "data": data},
             }
         )
-        _LOGGER.info("已下发开锁指令给 %s", did)
         return message_id
 
     @staticmethod

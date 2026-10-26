@@ -25,7 +25,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import WonlyCoordinator
-from .protocol import build_unlock_payload
+from .protocol import build_unlock_payload, build_wake_payload
 from .ws import WonlyConnection
 
 _LOGGER = logging.getLogger(__name__)
@@ -116,6 +116,11 @@ async def async_remote_unlock(
     else:
         auth_type = "password"
         credential = entry.data[CONF_CREDENTIAL]
+        _LOGGER.warning(
+            "王力门锁 %s 没有配置「开锁密码」，只能用登录密码换凭证——"
+            "服务端会受理但门锁不动作，请在「设备与服务 → 王力智能门锁 → 配置」里补填",
+            did,
+        )
 
     try:
         secure_token = await api.async_create_secure_token(
@@ -136,8 +141,15 @@ async def async_remote_unlock(
             ) from err
         raise HomeAssistantError(f"获取远程开锁凭证失败: {err}") from err
 
+    # 先把门锁唤醒再开锁：门锁睡着时，服务端只是把开锁指令缓存 60 秒，
+    # 设备没醒过来指令就过期了，服务端照样回「已接收」但门锁没反应。
+    if not await connection.async_wake(did, build_wake_payload(uid)):
+        _LOGGER.warning(
+            "门锁 %s 没有回应唤醒指令（可能离线或没电），仍会下发开锁指令", did
+        )
+
     try:
-        response = await connection.async_ctrl(did, secure_token, payload)
+        response = await connection.async_ctrl(did, payload, secure_token)
     except WonlyApiError as err:
         raise HomeAssistantError(f"远程开锁失败: {err}") from err
 
