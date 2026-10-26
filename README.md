@@ -10,7 +10,7 @@
 - **实时状态**：WebSocket 长连接（`wss://wsapi.kiwiot.com`），开锁 / 上锁事件秒级推送，断线自动重连
 - **远程开锁**：一个「开门」按钮，按一下走王力自己的 secureToken 鉴权，和 App 一样（需先配置「开锁密码」）
   - 开锁前会自动先唤醒门锁（见下面的「开锁前必须唤醒门锁」）
-- **事件实体**：门锁事件直接进 HA 事件总线，自动化用 `event_type` 触发
+- **事件实体**：门锁事件进 HA 事件总线，也进 `event.<设备名>_门锁事件` 实体，两种方式都能写自动化
 - **开锁方式 / 开锁用户**：指纹、密码、人脸、门卡…以及是谁开的
 
 ## 安装
@@ -93,19 +93,25 @@ HACS → 集成 → 搜索「王力智能门锁」→ 下载 → 重启 Home Ass
 门锁事件的属性里，「开锁方式」是中文：`指纹` / `密码` / `人脸` / `门卡` / `钥匙` / `旋钮` / `室内按钮` / `室内把手` / `远程`。
 **「远程」= 远程开锁（HA 按钮或王力 App）**，其余都是人在门那边用指纹、密码这些开的门。
 
+> **HA 2026.10 起**：事件实体不再自动往事件总线发事件，要用新的 `event.received` 触发器
+> （写自动化时实体选 `target:`，不是顶层 `entity_id:`）。
+> 本集成另外自己往事件总线补发了一发，所以老的 `trigger: event` 写法也照样能用。
+
 ### 回家：晚上九点后从外面开门（非远程）开灯
 
 ```yaml
 triggers:
-  - trigger: event
-    event_type: UNLOCKED
-    event_data:
-      设备ID: 3E8F5DDCB440
+  - trigger: event.received
+    target:
+      entity_id: event.wo_de_jia_men_suo_shi_jian
+    options:
+      event_type:
+        - UNLOCKED
 conditions:
   - condition: time
     after: "21:00:00"
   - condition: template
-    value_template: "{{ trigger.event.data.get('开锁方式') != '远程' }}"
+    value_template: "{{ trigger.to_state.attributes.get('开锁方式') != '远程' }}"
 actions:
   - action: light.turn_on
     target:
@@ -123,17 +129,38 @@ actions:
 mode: single
 ```
 
-> 事件的 `event_data` 用的是属性名「设备ID」（中文），不是 `deviceID`。
 > 「开锁方式」为「远程」时说明是远程开的门，条件里排除掉，就不会因为手机上远程开门而误开灯。
+
+老写法（事件总线）同样有效：
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: UNLOCKED
+    event_data:
+      设备ID: 3E8F5DDCB440
+conditions:
+  - condition: template
+    value_template: "{{ trigger.event.data.get('开锁方式') != '远程' }}"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.mijia_cn_group_2108940368929230849_group3_s_2_light
+mode: single
+```
+
+> 事件的 `event_data` 用的是属性名「设备ID」（中文），不是 `deviceID`。
 
 ### 离家：门锁上锁后关灯
 
 ```yaml
 triggers:
-  - trigger: event
-    event_type: LOCKED
-    event_data:
-      设备ID: 3E8F5DDCB440
+  - trigger: event.received
+    target:
+      entity_id: event.wo_de_jia_men_suo_shi_jian
+    options:
+      event_type:
+        - LOCKED
 conditions: []
 actions:
   - action: light.turn_off
@@ -146,13 +173,17 @@ mode: single
 
 ```yaml
 triggers:
-  - trigger: event
-    event_type: UNLOCKED
+  - trigger: event.received
+    target:
+      entity_id: event.wo_de_jia_men_suo_shi_jian
+    options:
+      event_type:
+        - UNLOCKED
 conditions: []
 actions:
   - action: notify.send_message
     data:
-      message: "门开了，开锁方式：{{ trigger.event.data['开锁方式'] }}"
+      message: "门开了，开锁方式：{{ trigger.to_state.attributes.get('开锁方式') }}"
 mode: single
 ```
 

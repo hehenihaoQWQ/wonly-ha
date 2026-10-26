@@ -85,5 +85,8 @@ class WonlyLockEvent(CoordinatorEntity[WonlyCoordinator], EventEntity):
             "事件时间": event.get("created_at"),
             "图片地址": data.get("image_uri") or image.get("uri"),
         }
+        # HA 2026.10 起 EventEntity 不再自动往事件总线发事件，
+        # 这里自己补一发，老写法（trigger: event）也能继续用。
+        self.hass.bus.fire(event_type, attributes)
         self._trigger_event(event_type, attributes)
         self.async_write_ha_state()
