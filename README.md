@@ -85,25 +85,46 @@ HACS → 集成 → 搜索「王力智能门锁」→ 下载 → 重启 Home Ass
 
 属性里另有中文的「事件」字段。
 
+> 「开锁方式」在**实时推送**和**事件列表**里是两种编码（数字 / 字符串），集成已经统一成同一套中文，
+> 所以同一个远程开锁不会一会儿显示「远程」一会儿显示「手机」。
+
 ## 自动化示例
 
-### 回家：门开 1 分钟后开灯
+门锁事件的属性里，「开锁方式」是中文：`指纹` / `密码` / `人脸` / `门卡` / `钥匙` / `旋钮` / `室内按钮` / `室内把手` / `远程`。
+**「远程」= 远程开锁（HA 按钮或王力 App）**，其余都是人在门那边用指纹、密码这些开的门。
+
+### 回家：晚上九点后从外面开门（非远程）开灯
 
 ```yaml
 triggers:
   - trigger: event
     event_type: UNLOCKED
     event_data:
-      deviceID: 3E8F5DDCB440
-conditions: []
+      设备ID: 3E8F5DDCB440
+conditions:
+  - condition: time
+    after: "21:00:00"
+  - condition: template
+    value_template: "{{ trigger.event.data.get('开锁方式') != '远程' }}"
 actions:
   - action: light.turn_on
     target:
-      entity_id: light.客厅灯组
+      entity_id:
+        - light.mijia_cn_group_2109228834099716098_group3_s_2_light
+        - light.mijia_cn_group_2108940368929230849_group3_s_2_light
     data:
-      transition: 2
+      brightness_pct: 70
+      color_temp_kelvin: 3500
+  - action: light.turn_on
+    target:
+      entity_id: light.lemesh_cn_1185193881_wyrb02_s_7_ambient_light
+    data:
+      brightness_pct: 70
 mode: single
 ```
+
+> 事件的 `event_data` 用的是属性名「设备ID」（中文），不是 `deviceID`。
+> 「开锁方式」为「远程」时说明是远程开的门，条件里排除掉，就不会因为手机上远程开门而误开灯。
 
 ### 离家：门锁上锁后关灯
 
@@ -112,12 +133,12 @@ triggers:
   - trigger: event
     event_type: LOCKED
     event_data:
-      deviceID: 3E8F5DDCB440
+      设备ID: 3E8F5DDCB440
 conditions: []
 actions:
   - action: light.turn_off
     target:
-      entity_id: light.客厅灯组
+      entity_id: light.mijia_cn_group_2108940368929230849_group3_s_2_light
 mode: single
 ```
 
