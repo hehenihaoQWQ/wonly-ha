@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LOCKED_EVENTS, UNLOCKED_EVENTS
 from .coordinator import WonlyCoordinator
@@ -22,14 +23,18 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """建立门锁实体。"""
-    coordinator: WonlyCoordinator = hass.data["wonly"][entry.entry_id]["coordinator"]
+    coordinator: WonlyCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     async_add_entities(
         WonlyLock(coordinator, did) for did in coordinator.locks
     )
 
 
-class WonlyLock(LockEntity):
-    """王力智能门锁。"""
+class WonlyLock(CoordinatorEntity[WonlyCoordinator], LockEntity):
+    """王力智能门锁。
+
+    必须继承 CoordinatorEntity：不继承的话它走 HA 默认的 30 秒实体轮询，
+    状态会有几十秒延迟（传感器/事件实体是协调器推送，即时更新）。
+    """
 
     _attr_has_entity_name = True
     _attr_name = "门锁"
@@ -40,13 +45,13 @@ class WonlyLock(LockEntity):
     _attr_supported_features = LockEntityFeature(0)
 
     def __init__(self, coordinator: WonlyCoordinator, did: str) -> None:
-        self._coordinator = coordinator
+        CoordinatorEntity.__init__(self, coordinator)
         self._did = did
         self._attr_unique_id = f"{DOMAIN}_{did}"
 
     @property
     def _lock(self) -> dict:
-        return self._coordinator.locks.get(self._did, {})
+        return self.coordinator.locks.get(self._did, {})
 
     @property
     def available(self) -> bool:
@@ -82,8 +87,16 @@ class WonlyLock(LockEntity):
         """远程开锁。"""
         from . import async_remote_unlock
 
-        await async_remote_unlock(self.hass, self._coordinator, self._did)
+        await async_remote_unlock(self.hass, self.coordinator, self._did)
 
     async def async_lock(self) -> None:
         """王力这一系列不支持远程上锁。"""
         raise HomeAssistantError("该门锁不支持远程上锁，请在门内侧上锁")
+
+    async def async_open(self, **kwargs: Any) -> None:
+        """没有独立的「打开」动作。
+
+        基础类的 open() 会直接抛 NotImplementedError，HA 前端只显示
+        "Unknown error"，这里换成能看懂的提示。
+        """
+        raise HomeAssistantError("该门锁没有单独的「打开」动作，请用「开锁」")
