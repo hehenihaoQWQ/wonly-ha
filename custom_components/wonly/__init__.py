@@ -142,8 +142,8 @@ async def async_remote_unlock(
         raise HomeAssistantError(f"远程开锁失败: {err}") from err
 
     header = response.get("header") or {}
-    # 应答内容先用 WARNING 打出来，方便在 HA 的系统日志里核对服务端到底回了什么
-    _LOGGER.warning(
+    # 应答内容打出来，方便在 HA 的系统日志里核对服务端到底回了什么
+    _LOGGER.info(
         "王力开锁应答 %s (凭证方式 %s): %s",
         header.get("name"),
         auth_type,
