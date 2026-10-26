@@ -125,6 +125,18 @@ async def async_remote_unlock(
             uid, credential, auth_type
         )
     except WonlyApiError as err:
+        # 凭证不对是最常见的失败原因，给出能照着做的提示
+        if "401" in str(err):
+            if auth_type == "secure_password":
+                raise HomeAssistantError(
+                    "开锁密码不对：请在「设备与服务 → 王力智能门锁 → 配置」里"
+                    "重新填写账号的开锁密码（安全密码，最多 6 位）"
+                ) from err
+            raise HomeAssistantError(
+                "王力服务端拒绝了开锁凭证（401）。请在"
+                "「设备与服务 → 王力智能门锁 → 配置」里填写账号的开锁密码"
+                "（安全密码，最多 6 位）"
+            ) from err
         raise HomeAssistantError(f"获取远程开锁凭证失败: {err}") from err
 
     try:
@@ -135,8 +147,9 @@ async def async_remote_unlock(
     header = response.get("header") or {}
     # 应答内容先用 WARNING 打出来，方便在 HA 的系统日志里核对服务端到底回了什么
     _LOGGER.warning(
-        "王力开锁应答 %s: %s",
+        "王力开锁应答 %s (凭证方式 %s): %s",
         header.get("name"),
+        auth_type,
         json.dumps(response.get("payload") or {}, ensure_ascii=False)[:500],
     )
     if header.get("name") == "ErrorResponse":
