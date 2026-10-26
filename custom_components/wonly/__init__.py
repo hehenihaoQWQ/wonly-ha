@@ -1,6 +1,6 @@
 """王力智能门锁 (go.kiwik.cn) 集成。
 
-登录换 token -> 拉门锁状态 -> WebSocket 收事件 -> 暴露 lock/sensor/event 实体。
+登录换 token -> 拉门锁状态 -> WebSocket 收事件 -> 暴露 button/sensor/event 实体。
 """
 
 from __future__ import annotations

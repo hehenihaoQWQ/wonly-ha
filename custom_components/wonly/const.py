@@ -29,7 +29,10 @@ WS_URL: Final = "wss://wsapi.kiwiot.com/"
 # WebSocket 心跳间隔（秒）
 WS_HEARTBEAT_SECONDS: Final = 30
 
-PLATFORMS: Final = [Platform.LOCK, Platform.SENSOR, Platform.EVENT]
+# 只给「开门」按钮 + 状态传感器 + 事件实体。
+# 不做 lock 实体：这一系列门锁没有远程上锁，服务端也没有「当前是否上锁」接口，
+# 前端把 lock 渲染成可开可关的开关会让人误以为能远程上锁。
+PLATFORMS: Final = [Platform.BUTTON, Platform.SENSOR, Platform.EVENT]
 
 # 事件名 -> 展示用中文
 EVENT_NAMES: Final = {
