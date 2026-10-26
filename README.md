@@ -113,6 +113,14 @@ conditions:
   - condition: template
     value_template: "{{ trigger.to_state.attributes.get('开锁方式') != '远程' }}"
 actions:
+  # 1) 先给墙上开关上电。灯是接在智能开关继电器上的，继电器不通电时，
+  #    HA 里灯照样显示 on，但物理上是不亮的 —— 不先上电，后面点灯白点。
+  - action: switch.turn_on
+    target:
+      entity_id: switch.090615_cn_2158030396_akps3_on_p_2_1
+  # 2) 等灯重新上电上线（实测 3~18 秒）
+  - delay: "00:00:20"
+  # 3) 两个灯组：亮度 70%、3500K
   - action: light.turn_on
     target:
       entity_id:
@@ -121,6 +129,7 @@ actions:
     data:
       brightness_pct: 70
       color_temp_kelvin: 3500
+  # 4) 斗胆灯氛围灯：亮度 70%，不设色温
   - action: light.turn_on
     target:
       entity_id: light.lemesh_cn_1185193881_wyrb02_s_7_ambient_light
@@ -130,6 +139,10 @@ mode: single
 ```
 
 > 「开锁方式」为「远程」时说明是远程开的门，条件里排除掉，就不会因为手机上远程开门而误开灯。
+>
+> **灯的状态别只看 HA**：`state=on` 只说明开关/灯组是开着的，亮度可能是 0，物理上照样不亮。
+> 米家「灯组」更是云端虚拟设备，它报的亮度和成员灯的实际亮度经常对不上。
+> 要确认灯亮了没有，看组内成员灯实体，或者直接问人。
 
 老写法（事件总线）同样有效：
 
