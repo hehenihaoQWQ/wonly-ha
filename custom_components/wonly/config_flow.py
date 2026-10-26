@@ -16,7 +16,14 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import WonlyApi, WonlyApiError
-from .const import CONF_CLIENT_ID, CONF_CREDENTIAL, CONF_IDENTIFIER, DEFAULT_CLIENT_ID, DOMAIN
+from .const import (
+    CONF_CLIENT_ID,
+    CONF_CREDENTIAL,
+    CONF_IDENTIFIER,
+    CONF_SECURE_PASSWORD,
+    DEFAULT_CLIENT_ID,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +55,7 @@ class WonlyConfigFlow(ConfigFlow, domain=DOMAIN):
             identifier = normalize_identifier(user_input[CONF_IDENTIFIER])
             credential = user_input[CONF_CREDENTIAL]
             client_id = (user_input.get(CONF_CLIENT_ID) or DEFAULT_CLIENT_ID).strip()
+            secure_password = (user_input.get(CONF_SECURE_PASSWORD) or "").strip()
 
             session = async_get_clientsession(self.hass)
             api = WonlyApi(session, client_id=client_id)
@@ -65,6 +73,7 @@ class WonlyConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_IDENTIFIER: identifier,
                         CONF_CREDENTIAL: credential,
                         CONF_CLIENT_ID: client_id,
+                        CONF_SECURE_PASSWORD: secure_password,
                     },
                 )
 
@@ -80,10 +89,45 @@ class WonlyConfigFlow(ConfigFlow, domain=DOMAIN):
                         TextSelectorConfig(type=TextSelectorType.PASSWORD)
                     ),
                     vol.Optional(
+                        CONF_SECURE_PASSWORD,
+                        description={"suggested_value": ""},
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
+                    vol.Optional(
                         CONF_CLIENT_ID,
                         default=DEFAULT_CLIENT_ID,
                         description={"suggested_value": DEFAULT_CLIENT_ID},
                     ): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, str] | None = None
+    ) -> ConfigFlowResult:
+        """改开锁密码等配置，不用删了重加。"""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            secure_password = (user_input.get(CONF_SECURE_PASSWORD) or "").strip()
+            return self.async_update_reload_and_abort(
+                entry,
+                data={**entry.data, CONF_SECURE_PASSWORD: secure_password},
+            )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_SECURE_PASSWORD,
+                        description={"suggested_value": ""},
+                    ): TextSelector(
+                        TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                    ),
                 }
             ),
             errors=errors,

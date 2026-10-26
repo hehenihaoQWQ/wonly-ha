@@ -19,6 +19,7 @@ from .const import (
     CONF_CLIENT_ID,
     CONF_CREDENTIAL,
     CONF_IDENTIFIER,
+    CONF_SECURE_PASSWORD,
     DEFAULT_CLIENT_ID,
     DOMAIN_DATA,
     PLATFORMS,
@@ -109,9 +110,19 @@ async def async_remote_unlock(
     device = (coordinator.locks.get(did) or {}).get("device") or {}
     payload = build_unlock_payload(uid, str(device.get("pk") or ""))
 
+    # 换开锁凭证：填了「开锁密码」就用它（secure_password），
+    # 否则退回账号登录密码（password）。
+    secure_password = (entry.data.get(CONF_SECURE_PASSWORD) or "").strip()
+    if secure_password:
+        auth_type = "secure_password"
+        credential = secure_password
+    else:
+        auth_type = "password"
+        credential = entry.data[CONF_CREDENTIAL]
+
     try:
         secure_token = await api.async_create_secure_token(
-            uid, entry.data[CONF_CREDENTIAL]
+            uid, credential, auth_type
         )
     except WonlyApiError as err:
         raise HomeAssistantError(f"获取远程开锁凭证失败: {err}") from err

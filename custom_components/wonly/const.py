@@ -16,6 +16,9 @@ DOMAIN_DATA: Final = DOMAIN
 CONF_IDENTIFIER: Final = "identifier"
 CONF_CREDENTIAL: Final = "credential"
 CONF_CLIENT_ID: Final = "client_id"
+# 王力账号的「开锁密码」（安全密码，最多 6 位）。
+# 远程开锁要换 secureToken，服务端按这个密码的验证方式决定门锁认不认这个令牌。
+CONF_SECURE_PASSWORD: Final = "secure_password"
 
 # 王力 App 的 clientId（白标标识，非密钥）
 DEFAULT_CLIENT_ID: Final = "980tSgPSaW8WQ3HDKdyiyJKQymGqxMzl"

@@ -245,12 +245,23 @@ class WonlyApi:
             data = data.get("data") or []
         return data or []
 
-    async def async_create_secure_token(self, uid: str, credential: str) -> str:
-        """换远程开锁用的 secureToken（用账号密码即可，无需 6 位开锁密码）。"""
+    async def async_create_secure_token(
+        self, uid: str, credential: str, auth_type: str = "password"
+    ) -> str:
+        """换远程开锁用的 secureToken。
+
+        auth_type 决定服务端用什么方式校验这个凭证：
+        - "password"：用王力 App 的登录密码
+        - "secure_password"：用王力账号的「开锁密码」（安全密码，最多 6 位）
+
+        王力 App 里，账号只要设过开锁密码（profile.secured 为真），
+        远程开锁默认走 secure_password；用 login password 换来的令牌
+        服务端会收下并回一个「已接收」，但门锁那边不认，锁不会动。
+        """
         data = await self._request(
             "POST",
             f"/restapi/users/{uid}/mfa/tokens",
-            body={"auth_type": "password", "credential": credential},
+            body={"auth_type": auth_type, "credential": credential},
             headers=self._headers(
                 {"Content-Type": "application/json"}, auth=True, bearer=True
             ),
@@ -289,7 +300,9 @@ class WonlyApi:
                     "payloadVersion": 1,
                     "secureToken": secure_token,
                 },
-                "payload": {"did": did, "verify": True, "data": data},
+                # channel 是王力 App 在「实时画面」里开锁时带的字段（门锁只有 0 号通道），
+                # 服务端按它把指令路由到具体通道，缺了可能只回「已接收」而不下发。
+                "payload": {"did": did, "verify": True, "channel": 0, "data": data},
             }
         )
         _LOGGER.info("已下发开锁指令给 %s", did)

@@ -7,11 +7,23 @@
         "data": {
           "identifier": "手机号",
           "credential": "密码",
+          "secure_password": "开锁密码（可选）",
           "client_id": "Client ID"
         },
         "data_description": {
           "identifier": "国内手机号，例如 +8613930810820",
+          "secure_password": "王力账号的开锁密码（安全密码，最多 6 位）。填了才能远程开锁",
           "client_id": "一般不用改"
+        }
+      },
+      "reconfigure": {
+        "title": "重新配置王力智能门锁",
+        "description": "可以在这里补填开锁密码，不用删掉重加。",
+        "data": {
+          "secure_password": "开锁密码"
+        },
+        "data_description": {
+          "secure_password": "王力账号的开锁密码（安全密码，最多 6 位）。留空表示不填"
         }
       }
     },
@@ -19,7 +31,8 @@
       "invalid_auth": "账号或密码错误"
     },
     "abort": {
-      "already_configured": "该账号已经配置过了"
+      "already_configured": "该账号已经配置过了",
+      "reconfigure_successful": "配置已更新"
     }
   }
 }

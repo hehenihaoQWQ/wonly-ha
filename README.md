@@ -29,6 +29,17 @@ HACS → 集成 → 搜索「王力智能门锁」→ 下载 → 重启 Home Ass
 
 设置 → 设备与服务 → 「添加集成」→ 搜索「王力智能门锁」→ 填王力 App 的账号密码（国内手机号，例如 `+8613930810820`）。
 
+### 4. 填「开锁密码」（远程开锁要用）
+
+远程开锁时王力服务端要单独校验一次凭证，校验的是你账号的**开锁密码（安全密码，最多 6 位）**，
+不是登录密码。所以要额外填一次：
+
+- 加集成时可以直接填在「开锁密码」这一栏；
+- 已经加过的，在「设备与服务 → 王力智能门锁 → ⚙️ 配置」里重新配置补填，不用删掉重加。
+
+> 开锁密码在哪：手机王力 App → 我的 → 账号安全 / 安全设置 → 开锁密码。
+> 如果当初没设过，在 App 里设一个（≤6 位）再回来填。
+
 ## 实体
 
 每个门锁会生成下面这些实体（设备名取分组名，门锁本身没有名字时）：
@@ -121,6 +132,8 @@ mode: single
 ## 已知限制
 
 - **不支持远程上锁**。这一系列门锁的 `lock.lock` 会在实体上直接报「该门锁不支持远程上锁，请在门内侧上锁」。
+- **远程开锁需要填「开锁密码」**。只填登录密码时，服务端会回「已接收」但门锁不动作（App 也是这个行为），
+  所以在配置里补填账号的开锁密码（≤6 位）才能真正开动门。
 - **没有单独的「打开」动作**。`lock.open` 会报「该门锁没有单独的「打开」动作，请用「开锁」」。
   注意 `LockEntityFeature.OPEN` 指的是死锁那种单独的「打开」，**不是**「支持开锁」；
   声明了它 HA 会多渲染一个「打开」按钮，点了必然报错。开锁不需要任何 feature 标志。
@@ -135,7 +148,12 @@ mode: single
 - 登录：`POST /restapi/auth/tokens`，body `{auth_type:"password", identifier, credential}`，header `X-Kiwik-Client-Id`，返回 `access_token`（有效期 24 小时）
   - 注意：`POST /restapi/session/token` 只返回 `session_token`（JWT），不能当 access_token 用
 - 业务接口带 `?access_token=`：`/restapi/user`、`/restapi/groups`、`/restapi/groups/{gid}/devices`、`/api/devices/{did}/events`、`/api/locks/{did}/users`
-- 远程开锁：先 `POST /restapi/users/{uid}/mfa/tokens`（`auth_type:"password"`）换 secureToken，再通过 WebSocket 下发 `Iot.Device/Ctrl`
+- 远程开锁：先 `POST /restapi/users/{uid}/mfa/tokens` 换 secureToken，再通过 WebSocket 下发 `Iot.Device/Ctrl`
+  - **`auth_type` 决定门锁认不认这个令牌**，这是远程开锁能不能真正开动门的关键：
+    - `secure_password` + 账号的「开锁密码」（≤6 位）→ 门锁会执行
+    - `password` + 登录密码 → 服务端会回「已接收」，但门锁那边不认，锁不会动
+  - 王力 App 的逻辑：账号只要设过开锁密码，远程开锁默认就走 `secure_password`
+  - WebSocket 帧：`{"header":{"namespace":"Iot.Device","name":"Ctrl","messageId":uuid,"payloadVersion":1,"secureToken":jwt},"payload":{"did":...,"verify":true,"channel":0,"data":...}}`
 - 指令打包（与王力 App 一致）：`XD(cmd, data) = base64(大端 cmd 两字节 ++ data)`
   - **字节序是大端**：App 用 `DataView.setInt16(0, cmd)` 且没传 `littleEndian`，DataView 默认大端；
     它自己的解析函数 `ET()` 也按大端读。按小端理解的话，服务端会 ACK 但门锁不动作。
