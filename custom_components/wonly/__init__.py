@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -23,6 +24,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import WonlyCoordinator
+from .protocol import build_unlock_payload
 from .ws import WonlyConnection
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,6 +105,10 @@ async def async_remote_unlock(
     if not uid:
         raise HomeAssistantError("未获取到王力账号信息")
 
+    # 指令内容按门锁的协议号（pk）决定，见 protocol.build_unlock_payload
+    device = (coordinator.locks.get(did) or {}).get("device") or {}
+    payload = build_unlock_payload(uid, str(device.get("pk") or ""))
+
     try:
         secure_token = await api.async_create_secure_token(
             uid, entry.data[CONF_CREDENTIAL]
@@ -111,17 +117,23 @@ async def async_remote_unlock(
         raise HomeAssistantError(f"获取远程开锁凭证失败: {err}") from err
 
     try:
-        response = await connection.async_ctrl(did, secure_token)
+        response = await connection.async_ctrl(did, secure_token, payload)
     except WonlyApiError as err:
         raise HomeAssistantError(f"远程开锁失败: {err}") from err
 
     header = response.get("header") or {}
+    # 应答内容先用 WARNING 打出来，方便在 HA 的系统日志里核对服务端到底回了什么
+    _LOGGER.warning(
+        "王力开锁应答 %s: %s",
+        header.get("name"),
+        json.dumps(response.get("payload") or {}, ensure_ascii=False)[:500],
+    )
     if header.get("name") == "ErrorResponse":
-        payload = response.get("payload") or {}
+        payload_data = response.get("payload") or {}
         message = (
-            payload.get("message")
-            or payload.get("error_description")
-            or payload.get("errorCode")
+            payload_data.get("message")
+            or payload_data.get("error_description")
+            or payload_data.get("errorCode")
             or "服务端返回错误"
         )
         raise HomeAssistantError(f"远程开锁失败: {message}")

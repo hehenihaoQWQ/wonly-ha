@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import time
@@ -10,7 +9,7 @@ from typing import Any
 
 import aiohttp
 
-from .const import BASE_URL, CMD_DOORPW, DEFAULT_CLIENT_ID, WS_URL
+from .const import BASE_URL, DEFAULT_CLIENT_ID, WS_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -18,13 +17,6 @@ _LOGGER = logging.getLogger(__name__)
 # 带 "Home Assistant/..." 的请求在 /api/locks/{did}/users 上直接返回 403 Forbidden，
 # 换成别的 UA 就正常。所以这里固定一个自己的 UA。
 USER_AGENT = "KiwiOT-Wonly"
-
-# 远端开锁指令：门密码开锁(DOORPW=2063) + 标志位 1
-# 王力 App 的打包方式是 XD(cmd, data) = base64(小端 cmd 两字节 ++ data)，
-# 这里保持完全一致（标准 base64、保留补位符）。
-UNLOCK_PAYLOAD = base64.b64encode(
-    bytes([CMD_DOORPW & 0xFF, CMD_DOORPW >> 8, 0x01])
-).decode()  # -> "DwgB"
 
 
 class WonlyApiError(Exception):
@@ -283,6 +275,7 @@ class WonlyApi:
         ws: aiohttp.ClientWebSocketResponse,
         did: str,
         secure_token: str,
+        data: str,
         message_id: str | None = None,
     ) -> str:
         """下发开锁指令，返回 messageId 便于对响应。"""
@@ -296,7 +289,7 @@ class WonlyApi:
                     "payloadVersion": 1,
                     "secureToken": secure_token,
                 },
-                "payload": {"did": did, "verify": True, "data": UNLOCK_PAYLOAD},
+                "payload": {"did": did, "verify": True, "data": data},
             }
         )
         _LOGGER.info("已下发开锁指令给 %s", did)

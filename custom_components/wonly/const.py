@@ -28,10 +28,6 @@ WS_HEARTBEAT_SECONDS: Final = 30
 
 PLATFORMS: Final = [Platform.LOCK, Platform.SENSOR, Platform.EVENT]
 
-# 设备指令码（与王力 App 内嵌的 KiwiOT 协议一致）
-CMD_DOORPW: Final = 2063  # 门密码开锁
-CMD_STATUS: Final = 2065  # 查询状态
-
 # 事件名 -> 展示用中文
 EVENT_NAMES: Final = {
     "UNLOCKED": "已开锁",

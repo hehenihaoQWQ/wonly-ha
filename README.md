@@ -136,7 +136,15 @@ mode: single
   - 注意：`POST /restapi/session/token` 只返回 `session_token`（JWT），不能当 access_token 用
 - 业务接口带 `?access_token=`：`/restapi/user`、`/restapi/groups`、`/restapi/groups/{gid}/devices`、`/api/devices/{did}/events`、`/api/locks/{did}/users`
 - 远程开锁：先 `POST /restapi/users/{uid}/mfa/tokens`（`auth_type:"password"`）换 secureToken，再通过 WebSocket 下发 `Iot.Device/Ctrl`
-- 指令打包（与王力 App 一致）：`base64(小端 cmd 两字节 ++ data)`，开锁是 `DOORPW(2063) + [1]`
+- 指令打包（与王力 App 一致）：`XD(cmd, data) = base64(大端 cmd 两字节 ++ data)`
+  - **字节序是大端**：App 用 `DataView.setInt16(0, cmd)` 且没传 `littleEndian`，DataView 默认大端；
+    它自己的解析函数 `ET()` 也按大端读。按小端理解的话，服务端会 ACK 但门锁不动作。
+- 远程开锁的指令内容按门锁的 `pk`（12 位协议号）分两种：
+  - `pk` 以 `1002` 开头：`CMDCACHE(5638)` 套一层 `RMUNLK(5132)`，指令里必须带账号 uid
+    ```
+    [BE16 后续长度][BE32 有效期秒=60][BE16 命令块长][BE16 RMUNLK][len+2,标志位1,uid长度,uid...]
+    ```
+  - 其它 pk：直接 `DOORPW(2063) + [1]`
 - 事件：WebSocket `Iot.Device/EventNotify`，心跳 `Iot.Application/Ping`
 
 ### 必须自带 User-Agent

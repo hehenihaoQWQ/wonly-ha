@@ -64,7 +64,9 @@ class WonlyConnection:
             await self._ws.close()
         self._ws = None
 
-    async def async_ctrl(self, did: str, secure_token: str, timeout: float = 15) -> dict[str, Any]:
+    async def async_ctrl(
+        self, did: str, secure_token: str, data: str, timeout: float = 15
+    ) -> dict[str, Any]:
         """下发开锁指令并等待服务端应答。"""
         if not self.connected:
             raise WonlyApiError("王力门锁 WebSocket 未连接，无法下发指令")
@@ -73,7 +75,9 @@ class WonlyConnection:
         future: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending[message_id] = future
         try:
-            await self._api.async_send_ctrl(self._ws, did, secure_token, message_id)
+            await self._api.async_send_ctrl(
+                self._ws, did, secure_token, data, message_id
+            )
             try:
                 return await asyncio.wait_for(future, timeout)
             except TimeoutError:
