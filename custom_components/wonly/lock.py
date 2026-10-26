@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.lock import LockEntity, LockEntityFeature
 from homeassistant.config_entries import ConfigEntry
@@ -32,8 +33,11 @@ class WonlyLock(LockEntity):
 
     _attr_has_entity_name = True
     _attr_name = "门锁"
-    # 该系列只支持远程开锁，上锁需在门内侧操作
-    _attr_supported_features = LockEntityFeature.OPEN
+    # 这系列门锁没有独立的「打开」动作（开锁就是开门），所以不要声明
+    # LockEntityFeature.OPEN —— 声明了 HA 会多出一个「打开」按钮，
+    # 点了会走 lock.open -> 实体没实现 open() -> NotImplementedError。
+    # lock.unlock 本身不需要 feature 标志，所有 lock 实体都支持。
+    _attr_supported_features = LockEntityFeature(0)
 
     def __init__(self, coordinator: WonlyCoordinator, did: str) -> None:
         self._coordinator = coordinator
@@ -74,7 +78,7 @@ class WonlyLock(LockEntity):
             "事件时间": event.get("created_at"),
         }
 
-    async def async_unlock(self) -> None:
+    async def async_unlock(self, **kwargs: Any) -> None:
         """远程开锁。"""
         from . import async_remote_unlock
 
