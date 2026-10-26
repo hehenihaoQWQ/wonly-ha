@@ -58,17 +58,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    # 不注册 update listener：配置项变更后的重载由配置流自己安排
+    # （async_update_reload_and_abort）。两处都做的话，HA 2026.12 起
+    # 会认为该由集成自己安排重载，反而不再自动重载。
     # 任务绑定在配置项上，卸载配置时自动取消
     entry.async_create_background_task(
         hass, _async_ws_loop(hass, entry, api, coordinator), "wonly_ws"
     )
     return True
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """配置变更后重载。"""
-    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
