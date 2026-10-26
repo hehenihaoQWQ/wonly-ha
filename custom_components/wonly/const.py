@@ -67,9 +67,19 @@ UNLOCKED_EVENTS: Final = {
     "DOOR_LOCK_UNLOCKED_KNOB",
 }
 
-# 开锁方式 -> 中文
+# 开锁方式 -> 中文。
+# 同一个开锁事件有两种编码：WebSocket 实时推送用数字，REST 事件列表用字符串。
+# 这里把两边统一到同一个中文，否则同一个远程开锁会一会儿显示「远程」一会儿显示「手机」。
 UNLOCK_METHODS: Final = {
-    "PHONE": "手机",
+    0: "门内",
+    1: "指纹",
+    2: "密码",
+    3: "门卡",
+    5: "远程",
+    6: "人脸",
+    7: "掌纹",
+    9: "临时密码",
+    "PHONE": "远程",
     "PASSWORD": "密码",
     "FINGERPRINT": "指纹",
     "FACE": "人脸",
@@ -79,16 +89,4 @@ UNLOCK_METHODS: Final = {
     "INDOOR_BUTTON": "室内按钮",
     "INDOOR_LEVER": "室内把手",
     "APP": "App",
-}
-
-# 事件里 lock_user.type 的数字编码 -> 中文（与王力 App 一致）
-USER_TYPE_MAP: Final = {
-    0: "门内",
-    1: "指纹",
-    2: "密码",
-    3: "门卡",
-    5: "远程",
-    6: "人脸",
-    7: "掌纹",
-    9: "临时密码",
 }

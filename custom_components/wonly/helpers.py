@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .const import DOMAIN, USER_TYPE_MAP, UNLOCK_METHODS
+from .const import DOMAIN, UNLOCK_METHODS
 
 
 def device_name(lock: dict[str, Any]) -> str:
@@ -29,11 +29,11 @@ def device_info(lock: dict[str, Any], did: str) -> dict[str, Any]:
 
 
 def user_type_name(raw: Any) -> str | None:
-    """开锁方式 -> 中文（数字编码和字符串编码都支持）。"""
+    """开锁方式 -> 中文（数字编码和字符串编码都支持，两边是同一套中文）。"""
     if raw is None:
         return None
     if isinstance(raw, bool):
         return None
     if isinstance(raw, int) or (isinstance(raw, str) and raw.isdigit()):
-        return USER_TYPE_MAP.get(int(raw), "未知")
+        return UNLOCK_METHODS.get(int(raw), "未知")
     return UNLOCK_METHODS.get(str(raw).upper(), str(raw))
